@@ -97,7 +97,7 @@ prompt_input GIT_PAT "Personal Access Token (PAT)" ""
 prompt_input GIT_BRANCH "Branch name" "main" "^[a-zA-Z0-9_-]+$"
 prompt_input SSH_USER "SSH Username" ""
 prompt_input SSH_HOST "Server IP Address" "" "^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$"
-prompt_input SSH_KEY "SSH Key Path" "/c/Users/HP/Downloads/hng13-stage2-devops_key.pem"
+prompt_input SSH_KEY "SSH Key Path" "/c/Users/HP/Downloads/hng-13-stage2-devops_key.pem"
 prompt_input APP_PORT "Application Port (external host port)" "8080" "^[0-9]{1,5}$"
 prompt_input DOCKER_REGISTRY "Docker Registry URL" "https://index.docker.io/v1/" ""
 prompt_input DOCKER_USERNAME "Docker Username" ""
@@ -142,11 +142,11 @@ if [[ ! -f "docker-compose.yaml" || ! -f ".env" ]]; then
 fi
 log INFO "Project files verified."
 
-ssh_check "$SSH_USER" "$SSH_HOST" "$SSH_KEY"
+ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY"
 
 log INFO "Transferring project files to remote server..."
 
-ssh -i "$SSH_KEY" "$SSH_USER@$SSH_HOST" "mkdir -p /tmp/deploy_app" && \
+ssh -i "$SSH_KEY" "$SSH_USER@$SSH_HOST" "mkdir -p /tmp/deploy_app" &&
 scp -C -v -i "$SSH_KEY" ~/IdeaProjects/hng13-stage0-devops/index.html "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" || {
     log ERROR "Failed to transfer files"
     exit 1
@@ -154,8 +154,7 @@ scp -C -v -i "$SSH_KEY" ~/IdeaProjects/hng13-stage0-devops/index.html "$SSH_USER
 
 REMOTE_DIR="/tmp/deploy_app"
 
-
-PREP_CMD="
+ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "
     sudo apt update && sudo apt upgrade -y
 
     if ! command -v docker >/dev/null 2>&1; then
@@ -195,8 +194,6 @@ PREP_CMD="
     fi
 "
 
-ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "$PREP_CMD"
-
 log INFO "Deploying application on remote..."
 
 ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "
@@ -218,6 +215,7 @@ ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "
 "
 
 # Wait for health checks remotely
+
 log INFO "Waiting for health checks..."
 ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "
     cd $REMOTE_DIR
@@ -239,7 +237,7 @@ log INFO "App accessible on port $APP_PORT."
 log INFO "Validating deployment..."
 
 ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "
-    docker-compose ps
+    docker ps
 
     curl -f http://localhost:$APP_PORT || exit 1
     echo 'Deployment validated locally.'
