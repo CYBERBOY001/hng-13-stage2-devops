@@ -141,17 +141,14 @@ if [[ ! -f "docker-compose.yaml" || ! -f ".env" ]]; then
 fi
 log INFO "Project files verified."
 
-log INFO "Transferring project files to remote server..."
-ssh -i "$SSH_KEY" "$SSH_USER@$SSH_HOST" "mkdir -p /tmp/deploy_app" &&
-scp -C -v -i "$SSH_KEY" ~/IdeaProjects/hng13-stage0-devops/index.html "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" &&
-scp -C -v -i "$SSH_KEY" docker-compose.yaml "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" &&
-scp -C -v -i "$SSH_KEY" nginx.conf.template "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" &&
-scp -C -v -i "$SSH_KEY" entrypoint.sh "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" &&
-scp -C -v -i "$SSH_KEY" .env "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" || {
-    log ERROR "Failed to transfer files"
-    exit 1
-}
 
+log INFO "Transferring project files to remote server..."
+ssh -i "$SSH_KEY" "$SSH_USER@$SSH_HOST" "mkdir -p /tmp/deploy_app" || { log ERROR "Failed to create remote dir"; exit 1; }
+scp -C -v -i "$SSH_KEY" ~/IdeaProjects/hng13-stage0-devops/index.html "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" || { log ERROR "Failed to transfer index.html"; exit 1; }
+scp -C -v -i "$SSH_KEY" ~/IdeaProjects/hng13-stage0-devops/docker-compose.yaml "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" || { log ERROR "Failed to transfer docker-compose.yaml"; exit 1; }
+scp -C -v -i "$SSH_KEY" ~/IdeaProjects/hng13-stage0-devops/nginx.conf.template "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" || { log ERROR "Failed to transfer nginx.conf.template"; exit 1; }
+scp -C -v -i "$SSH_KEY" ~/IdeaProjects/hng13-stage0-devops/entrypoint.sh "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" || { log ERROR "Failed to transfer entrypoint.sh"; exit 1; }
+scp -C -v -i "$SSH_KEY" ~/IdeaProjects/hng13-stage0-devops/.env "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" || { log ERROR "Failed to transfer .env"; exit 1; }
 
 REMOTE_DIR="/tmp/deploy_app"
 
