@@ -134,18 +134,14 @@ git checkout "$GIT_BRANCH" || {
 
 log INFO "Repository cloned/updated successfully."
 
-
 log INFO "Verifying project structure..."
 if [[ ! -f "docker-compose.yaml" || ! -f ".env" ]]; then
-    log ERROR "Required files (docker-compose.yaml) not found in $PWD"
+    log ERROR "Required files (docker-compose.yaml, .env) not found in $PWD"
     exit 1
 fi
 log INFO "Project files verified."
 
-ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY"
-
 log INFO "Transferring project files to remote server..."
-
 ssh -i "$SSH_KEY" "$SSH_USER@$SSH_HOST" "mkdir -p /tmp/deploy_app" &&
 scp -C -v -i "$SSH_KEY" ~/IdeaProjects/hng13-stage0-devops/index.html "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" || {
     log ERROR "Failed to transfer files"
@@ -154,7 +150,9 @@ scp -C -v -i "$SSH_KEY" ~/IdeaProjects/hng13-stage0-devops/index.html "$SSH_USER
 
 REMOTE_DIR="/tmp/deploy_app"
 
-ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "
+log INFO "Preparing remote environment..."
+
+PREP_CMD="
     sudo apt update && sudo apt upgrade -y
 
     if ! command -v docker >/dev/null 2>&1; then
@@ -176,8 +174,7 @@ ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "
 
     if ! groups \$USER | grep -q docker; then
         sudo usermod -aG docker \$USER
-        newgrp docker
-        echo 'User added to docker group.'
+        echo 'User added to docker group. Refreshing session...'
     fi
 
     sudo systemctl enable docker
@@ -192,56 +189,42 @@ ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "
     else
         echo 'No Docker credentials provided, skipping login.'
     fi
-"
 
-log INFO "Deploying application on remote..."
-
-ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "
-    cd $REMOTE_DIR
-
-    docker-compose down || true
-    docker system prune -f || true
-
-    docker-compose up -d
-
-    sleep 10
-    if docker ps | grep -q app_blue || docker ps | grep -q app_green; then
-        echo 'Containers are running.'
-        docker-compose logs
-    else
-        echo 'Containers failed to start.'
-        exit 1
-    fi
-"
-
-# Wait for health checks remotely
-
-log INFO "Waiting for health checks..."
-ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "
-    cd $REMOTE_DIR
-    for i in {1..30}; do
-        if docker-compose ps | grep -q 'healthy'; then
-            echo 'Health checks passed.'
-            break
+    # Refresh session for group changes and run deploy commands
+    su - \$USER -c '
+        cd $REMOTE_DIR
+        docker-compose down || true
+        docker system prune -f || true
+        docker-compose up -d
+        sleep 10
+        if docker ps | grep -q app_blue || docker ps | grep -q app_green; then
+            echo \"Containers are running.\"
+            docker-compose logs
+        else
+            echo \"Containers failed to start.\"
+            exit 1
         fi
-        sleep 2
-    done
+
+        # Health wait
+        for i in {1..30}; do
+            if docker-compose ps | grep -q \"healthy\"; then
+                echo \"Health checks passed.\"
+                break
+            fi
+            sleep 2
+        done
+
+        curl -f http://localhost:$APP_PORT/healthz || exit 1
+        echo \"App accessible on port $APP_PORT.\"
+
+        # Validation
+        docker ps
+        curl -f http://localhost:$APP_PORT || exit 1
+        echo \"Deployment validated locally.\"
+    '
 "
 
-if ! ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "curl -f http://localhost:$APP_PORT/healthz"; then
-    log ERROR "Health check failed on port $APP_PORT."
-    exit 1
-fi
-log INFO "App accessible on port $APP_PORT."
-
-log INFO "Validating deployment..."
-
-ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "
-    docker ps
-
-    curl -f http://localhost:$APP_PORT || exit 1
-    echo 'Deployment validated locally.'
-"
+ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "$PREP_CMD"
 
 CLEANUP_FLAG=${1:-}
 if [[ "$CLEANUP_FLAG" == "--cleanup" ]]; then
@@ -250,7 +233,7 @@ if [[ "$CLEANUP_FLAG" == "--cleanup" ]]; then
         cd $REMOTE_DIR
         docker-compose down -v
         docker system prune -a -f
-        sudo rm -rf $REMOTE_DIR
+        rm -rf $REMOTE_DIR
         docker logout $DOCKER_REGISTRY || true
     "
 fi

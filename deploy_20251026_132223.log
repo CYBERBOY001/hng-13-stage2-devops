@@ -1,0 +1,46 @@
+[2025-10-26 13:22:23] [INFO] Starting remote deployment script. Log file: /c/Users/HP/IdeaProjects/hng-13-stage2-devops/deploy_20251026_132223.log
+[2025-10-26 13:24:53] [INFO] Cloning repository: https://github.com/CYBERBOY001/hng-13-stage2-devops.git (branch: main)
+[2025-10-26 13:24:53] [INFO] Repository exists, pulling latest changes...
+[2025-10-26 13:24:55] [INFO] Repository cloned/updated successfully.
+[2025-10-26 13:24:55] [INFO] Verifying project structure...
+[2025-10-26 13:24:55] [INFO] Project files verified.
+[2025-10-26 13:24:55] [INFO] Transferring project files to remote server...
+[2025-10-26 13:25:06] [INFO] Executing remotely: 
+    sudo apt update && sudo apt upgrade -y
+
+    if ! command -v docker >/dev/null 2>&1; then
+        curl -fsSL https://get.docker.com -o get-docker.sh
+        sudo sh get-docker.sh
+        sudo rm get-docker.sh
+        echo 'Docker installed.'
+    else
+        echo 'Docker already installed.'
+    fi
+
+    if ! command -v docker-compose >/dev/null 2>&1; then
+        sudo curl -L 'https://github.com/docker/compose/releases/latest/download/docker-compose-MINGW64_NT-10.0-26100-x86_64' -o /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
+        echo 'Docker Compose installed.'
+    else
+        echo 'Docker Compose already installed.'
+    fi
+
+    if ! groups $USER | grep -q docker; then
+        sudo usermod -aG docker $USER
+        newgrp docker
+        echo 'User added to docker group.'
+    fi
+
+    sudo systemctl enable docker
+    sudo systemctl start docker
+
+    docker --version
+    docker-compose --version
+
+    if [[ -n "mkaey01" && -n "m?$7XMNQ_kP5at6" ]]; then
+        echo 'm?$7XMNQ_kP5at6' | docker login https://index.docker.io/v1/ -u mkaey01 --password-stdin || { echo 'Docker login failed.'; exit 1; }
+        echo 'Docker login successful.'
+    else
+        echo 'No Docker credentials provided, skipping login.'
+    fi
+
