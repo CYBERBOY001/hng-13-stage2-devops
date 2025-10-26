@@ -137,7 +137,7 @@ log INFO "Repository cloned/updated successfully."
 
 log INFO "Verifying project structure..."
 if [[ ! -f "docker-compose.yml" || ! -f ".env" ]]; then
-    log ERROR "Required files (docker-compose.yml, .env) not found in $PWD"
+    log ERROR "Required files (docker-compose.yml) not found in $PWD"
     exit 1
 fi
 log INFO "Project files verified."
