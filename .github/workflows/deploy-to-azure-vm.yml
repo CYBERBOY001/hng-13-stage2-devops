@@ -1,0 +1,42 @@
+name: Deploy to Azure VM
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            # Navigate to app directory
+            cd ${{ secrets.VM_APP_PATH }}
+            
+            # Pull latest code
+            git pull origin main
+            
+            # Optional: Docker login if images are private
+            ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+            
+            # Pull latest images
+            docker-compose pull
+            
+            # Stop existing services
+            docker-compose down
+            
+            # Start services (uses .env for vars; defaults ACTIVE_POOL=blue)
+            docker-compose up -d
+            
+            # Verify health (optional)
+            sleep 30
+            docker-compose ps
+            curl -f http://localhost:${{ secrets.PORT || 8080 }}/healthz || echo "Health check failed"
