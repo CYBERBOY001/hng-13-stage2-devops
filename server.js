@@ -1,10 +1,16 @@
 const express = require('express');
+const path = require('path');
 const app = express();
 const port = process.env.PORT || 8080;
 
 // Middleware to parse JSON and URL-encoded bodies
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static index.html at root '/'
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 // Global chaos state
 let chaosMode = null; // null, 'error', or 'timeout'

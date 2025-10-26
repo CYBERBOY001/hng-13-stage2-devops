@@ -92,29 +92,68 @@ log_file="deploy_$TIMESTAMP.log"
 LOG_FILE="$SCRIPT_DIR/$log_file"
 log INFO "Starting remote deployment script. Log file: $LOG_FILE"
 
+prompt_input GIT_REPO "Git Repository URL" "" "^https?://github\.com/.+\.git$"
+prompt_input GIT_PAT "Personal Access Token (PAT)" ""
+prompt_input GIT_BRANCH "Branch name" "main" "^[a-zA-Z0-9_-]+$"
 prompt_input SSH_USER "SSH Username" ""
 prompt_input SSH_HOST "Server IP Address" "" "^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$"
-prompt_input SSH_KEY "SSH Key Path" "" "^~/.ssh/id_rsa$"
+prompt_input SSH_KEY "SSH Key Path" "/c/Users/HP/Downloads/hng13-stage2-devops_key.pem"
 prompt_input APP_PORT "Application Port (external host port)" "8080" "^[0-9]{1,5}$"
 prompt_input DOCKER_REGISTRY "Docker Registry URL" "https://index.docker.io/v1/" ""
 prompt_input DOCKER_USERNAME "Docker Username" ""
 prompt_input DOCKER_PASSWORD "Docker Password" ""
 
+export GIT_PAT
+
+log INFO "Cloning repository: $GIT_REPO (branch: $GIT_BRANCH)"
+
+REPO_DIR=$(basename "$GIT_REPO" .git)
+
+if [[ -d "$REPO_DIR" ]]; then
+    log INFO "Repository exists, pulling latest changes..."
+    cd "$REPO_DIR" || {
+        log ERROR "Failed to cd into $REPO_DIR"
+        exit 1
+    }
+    git pull origin "$GIT_BRANCH"
+else
+    git clone "https://x-access-token:$GIT_PAT@github.com/$(echo "$GIT_REPO" | sed 's|https\?://github\.com/||')" || {
+        log ERROR "Failed to clone repository"
+        exit 1
+    }
+    cd "$REPO_DIR" || {
+        log ERROR "Failed to cd into $REPO_DIR"
+        exit 1
+    }
+fi
+
+git checkout "$GIT_BRANCH" || {
+    log ERROR "Failed to checkout branch $GIT_BRANCH"
+    exit 1
+}
+
+log INFO "Repository cloned/updated successfully."
+
+
 log INFO "Verifying project structure..."
-if [[ ! -f "docker-compose.yml" || ! -f ".env" || ! -f "nginx.conf.template" || ! -f "entrypoint.sh" ]]; then
-    log ERROR "Required files (docker-compose.yml, .env, nginx.conf.template, entrypoint.sh) not found in $PWD"
+if [[ ! -f "docker-compose.yml" || ! -f ".env" ]]; then
+    log ERROR "Required files (docker-compose.yml, .env) not found in $PWD"
     exit 1
 fi
 log INFO "Project files verified."
 
+ssh_check "$SSH_USER" "$SSH_HOST" "$SSH_KEY"
+
 log INFO "Transferring project files to remote server..."
-rsync -avz -e "ssh -i $SSH_KEY" "$PWD/" "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" || {
+
+ssh -i "$SSH_KEY" "$SSH_USER@$SSH_HOST" "mkdir -p /tmp/deploy_app" && \
+scp -C -v -i "$SSH_KEY" ~/IdeaProjects/hng13-stage0-devops/index.html "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" || {
     log ERROR "Failed to transfer files"
     exit 1
 }
+
 REMOTE_DIR="/tmp/deploy_app"
 
-log INFO "Preparing remote environment..."
 
 PREP_CMD="
     sudo apt update && sudo apt upgrade -y
@@ -169,7 +208,7 @@ ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "
     docker-compose up -d
 
     sleep 10
-    if docker ps | grep -q nginx || docker ps | grep -q app_blue || docker ps | grep -q app_green; then
+    if docker ps | grep -q app_blue || docker ps | grep -q app_green; then
         echo 'Containers are running.'
         docker-compose logs
     else
