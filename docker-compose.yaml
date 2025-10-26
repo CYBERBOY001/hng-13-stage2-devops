@@ -34,8 +34,8 @@ services:
     ports:
       - "${PORT:-8080}:80"
     volumes:
-      - ./nginx.conf.template:/etc/nginx/nginx.conf.template:ro
-      - ./nginx-entrypoint.sh:/nginx-entrypoint.sh
+      - ./nginx.conf.template:/etc/nginx/nginx.conf.template
+      - ./nginx-entrypoint.sh:/nginx-entrypoint.sh:ro
 
     environment:
       - ACTIVE_POOL=${ACTIVE_POOL:-blue}
