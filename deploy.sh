@@ -143,10 +143,15 @@ log INFO "Project files verified."
 
 log INFO "Transferring project files to remote server..."
 ssh -i "$SSH_KEY" "$SSH_USER@$SSH_HOST" "mkdir -p /tmp/deploy_app" &&
-scp -C -v -i "$SSH_KEY" ~/IdeaProjects/hng13-stage0-devops/index.html "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" || {
+scp -C -v -i "$SSH_KEY" ~/IdeaProjects/hng13-stage0-devops/index.html "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" &&
+scp -C -v -i "$SSH_KEY" docker-compose.yaml "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" &&
+scp -C -v -i "$SSH_KEY" nginx.conf.template "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" &&
+scp -C -v -i "$SSH_KEY" entrypoint.sh "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" &&
+scp -C -v -i "$SSH_KEY" .env "$SSH_USER@$SSH_HOST:/tmp/deploy_app/" || {
     log ERROR "Failed to transfer files"
     exit 1
 }
+
 
 REMOTE_DIR="/tmp/deploy_app"
 
@@ -164,24 +169,32 @@ PREP_CMD="
         echo 'Docker already installed.'
     fi
 
-    if ! command -v docker-compose >/dev/null 2>&1; then
-        sudo curl -L 'https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)' -o /usr/local/bin/docker-compose
-        sudo chmod +x /usr/local/bin/docker-compose
-        echo 'Docker Compose installed.'
+    # Install Docker Compose v2 as plugin
+    if [[ ! -f /usr/local/lib/docker/cli-plugins/docker-compose ]]; then
+        sudo mkdir -p /usr/local/lib/docker/cli-plugins
+        ARCH=\$(uname -m)
+        if [ \"\$ARCH\" = \"x86_64\" ]; then
+            COMPOSE_URL=\"https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64\"
+        else
+            COMPOSE_URL=\"https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-aarch64\"
+        fi
+        sudo curl -SL \"\$COMPOSE_URL\" -o /usr/local/lib/docker/cli-plugins/docker-compose
+        sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+        echo 'Docker Compose v2 installed.'
     else
-        echo 'Docker Compose already installed.'
+        echo 'Docker Compose v2 already installed.'
     fi
 
     if ! groups \$USER | grep -q docker; then
         sudo usermod -aG docker \$USER
-        echo 'User added to docker group. Refreshing session...'
+        echo 'User added to docker group.'
     fi
 
     sudo systemctl enable docker
     sudo systemctl start docker
 
     docker --version
-    docker-compose --version
+    docker compose version
 
     if [[ -n \"$DOCKER_USERNAME\" && -n \"$DOCKER_PASSWORD\" ]]; then
         echo '$DOCKER_PASSWORD' | docker login $DOCKER_REGISTRY -u $DOCKER_USERNAME --password-stdin || { echo 'Docker login failed.'; exit 1; }
@@ -189,49 +202,70 @@ PREP_CMD="
     else
         echo 'No Docker credentials provided, skipping login.'
     fi
-
-    # Refresh session for group changes and run deploy commands
-    su - \$USER -c '
-        cd $REMOTE_DIR
-        docker-compose down || true
-        docker system prune -f || true
-        docker-compose up -d
-        sleep 10
-        if docker ps | grep -q app_blue || docker ps | grep -q app_green; then
-            echo \"Containers are running.\"
-            docker-compose logs
-        else
-            echo \"Containers failed to start.\"
-            exit 1
-        fi
-
-        # Health wait
-        for i in {1..30}; do
-            if docker-compose ps | grep -q \"healthy\"; then
-                echo \"Health checks passed.\"
-                break
-            fi
-            sleep 2
-        done
-
-        curl -f http://localhost:$APP_PORT/healthz || exit 1
-        echo \"App accessible on port $APP_PORT.\"
-
-        # Validation
-        docker ps
-        curl -f http://localhost:$APP_PORT || exit 1
-        echo \"Deployment validated locally.\"
-    '
 "
 
 ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "$PREP_CMD"
+
+log INFO "Deploying application on remote..."
+
+DEPLOY_CMD="
+    cd $REMOTE_DIR
+
+    docker compose down || true
+    docker system prune -f || true
+
+    docker compose up -d
+
+    sleep 10
+    if docker ps | grep -q app_blue || docker ps | grep -q app_green; then
+        echo 'Containers are running.'
+        docker compose logs
+    else
+        echo 'Containers failed to start.'
+        exit 1
+    fi
+"
+
+ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "$DEPLOY_CMD"
+
+# Wait for health checks remotely
+log INFO "Waiting for health checks..."
+HEALTH_CMD="
+    cd $REMOTE_DIR
+    for i in {1..30}; do
+        if docker compose ps | grep -q 'healthy'; then
+            echo 'Health checks passed.'
+            break
+        fi
+        sleep 2
+    done
+"
+
+ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "$HEALTH_CMD"
+
+if ! ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "curl -f http://localhost:$APP_PORT/healthz"; then
+    log ERROR "Health check failed on port $APP_PORT."
+    exit 1
+fi
+log INFO "App accessible on port $APP_PORT."
+
+log INFO "Validating deployment..."
+
+VALIDATE_CMD="
+    docker ps
+
+    curl -f http://localhost:$APP_PORT || exit 1
+    echo 'Deployment validated locally.'
+"
+
+ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "$VALIDATE_CMD"
 
 CLEANUP_FLAG=${1:-}
 if [[ "$CLEANUP_FLAG" == "--cleanup" ]]; then
     log INFO "Cleanup mode: Removing all deployed resources..."
     ssh_exec "$SSH_USER" "$SSH_HOST" "$SSH_KEY" "
         cd $REMOTE_DIR
-        docker-compose down -v
+        docker compose down -v
         docker system prune -a -f
         rm -rf $REMOTE_DIR
         docker logout $DOCKER_REGISTRY || true

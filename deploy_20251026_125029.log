@@ -1,7 +1,0 @@
-[2025-10-26 12:50:29] [INFO] Starting remote deployment script. Log file: /c/Users/HP/IdeaProjects/hng-13-stage2-devops/deploy_20251026_125029.log
-[2025-10-26 12:51:33] [INFO] Cloning repository: https://github.com/CYBERBOY001/hng-13-stage2-devops.git (branch: main)
-[2025-10-26 12:51:33] [INFO] Repository exists, pulling latest changes...
-[2025-10-26 12:51:35] [INFO] Repository cloned/updated successfully.
-[2025-10-26 12:51:35] [INFO] Verifying project structure...
-[2025-10-26 12:51:35] [INFO] Project files verified.
-[2025-10-26 12:51:36] [INFO] Executing remotely: 

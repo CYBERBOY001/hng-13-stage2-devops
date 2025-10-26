@@ -1,6 +1,0 @@
-[2025-10-26 12:24:32] [INFO] Starting remote deployment script. Log file: /c/Users/HP/IdeaProjects/hng-13-stage2-devops/deploy_20251026_122432.log
-[2025-10-26 12:25:51] [INFO] Cloning repository: https://github.com/CYBERBOY001/hng-13-stage2-devops.git (branch: main)
-[2025-10-26 12:25:51] [INFO] Repository exists, pulling latest changes...
-[2025-10-26 12:25:53] [INFO] Repository cloned/updated successfully.
-[2025-10-26 12:25:53] [INFO] Verifying project structure...
-[2025-10-26 12:25:54] [ERROR] Required files (docker-compose.yml) not found in /c/Users/HP/IdeaProjects/hng-13-stage2-devops/hng-13-stage2-devops
