@@ -7,7 +7,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Accept optional IP address, default to localhost
-HOST="${1:-localhost}"
+HOST="40.81.229.219"
 
 echo "=========================================="
 echo "Blue/Green Deployment Failover Test"
