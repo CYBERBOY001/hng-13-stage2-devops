@@ -38,7 +38,7 @@ services:
       - ./nginx-entrypoint.sh:/nginx-entrypoint.sh:ro
 
     environment:
-      - ACTIVE_POOL=${ACTIVE_POOL:-blue}
+     - PORT=${PORT}
     command: ["/nginx-entrypoint.sh"]
     depends_on:
       app_blue:
